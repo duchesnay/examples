@@ -14,9 +14,13 @@ import os
 import os.path
 import numpy as np
 import pandas as pd
-import nibabel
 import glob
 import re
+
+
+import nibabel
+from nilearn.maskers import NiftiMasker
+from nilearn.plotting import plot_stat_map, plot_glass_brain
 
 # Train test split
 from sklearn.model_selection import train_test_split
@@ -130,10 +134,19 @@ assert data.shape == (84, 5)
 # Read images
 
 mask_filename = os.path.join(WD, 'data/mni_cerebrum-mask.nii.gz')
-mask_arr = nibabel.load(mask_filename).get_fdata() != 0
-X = np.array([nibabel.load(img_filename).get_fdata()[mask_arr] for img_filename in data.img_filename])
+mask_img = nibabel.load(mask_filename)
+nifti_masker = NiftiMasker(mask_img)
+X = nifti_masker.fit_transform(data.img_filename)
+
+# Do it manually
+# mask_arr = mask_img.get_fdata() != 0
+# X_ = np.array([nibabel.load(img_filename).get_fdata()[mask_arr] for img_filename in data.img_filename])
+# assert np.max(np.abs(X - X_)) == 0
+# del X_
+
 assert X.shape == (84, 331695)
 y = data.age.values
+
 
 ###############################################################################
 # %% Split Data
@@ -159,6 +172,17 @@ y_pred_test = lrl2_cv.predict(X_test)
 
 print(cv_train_test_scores_params(lrl2_cv, y_pred_train, y_train, y_pred_test,
                                   y_test))
+
+
+###############################################################################
+# %% Map of weight
+
+lrl2 = lrl2_cv.steps[-1][1].best_estimator_
+coef_img = nifti_masker.inverse_transform(lrl2.coef_)
+# thresh = pd.Series(lrl2.coef_).abs().describe(percentiles=[0.01, 0.1])["1%"]
+plot_stat_map(coef_img)
+plot_glass_brain(coef_img, plot_abs=False)#,threshold = thresh)
+
 
 ###############################################################################
 # %% Elastic-net
